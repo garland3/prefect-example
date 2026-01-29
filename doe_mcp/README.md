@@ -16,32 +16,73 @@ doe_runner.py          Latin Hypercube sampling, calls the flow at each point
 run_all.py             Orchestrator: generate → design → approve → run
 ```
 
-## Setup
+## Quick Start (Local Mode)
+
+In local mode, flows run in-process. Good for development and small DOE runs.
 
 ```bash
-# From the prefect-example root
+# Install dependencies
 uv add fastmcp mcp litellm scipy numpy python-dotenv
 
 # Set your API key
 echo 'OPENROUTER_API_KEY=sk-or-v1-...' > .env
-```
 
-## Usage
-
-### Full pipeline
-
-```bash
+# Run the full pipeline
 uv run python doe_mcp/run_all.py
 ```
 
-This will:
-1. Discover MCP tools and generate Prefect tasks
-2. Send tasks to the LLM to design a flow
-3. Show the generated flow for review
-4. Prompt for approval before running
-5. Run Latin Hypercube DOE across the parameter space
+## Production Mode (Prefect Workers)
 
-### Individual steps
+For large DOE runs, execute flows via Prefect workers for parallelism.
+
+### 1. Start Prefect Server
+
+```bash
+# Terminal 1
+uv run prefect server start
+```
+
+Prefect UI: http://localhost:4200
+
+### 2. Create a Work Pool
+
+```bash
+uv run prefect work-pool create doe-pool --type process
+
+# Optional: set concurrency limit for parallel DOE points
+uv run prefect work-pool update doe-pool --concurrency-limit 4
+```
+
+### 3. Start Workers
+
+```bash
+# Terminal 2 (start multiple for parallelism)
+uv run prefect worker start --pool doe-pool
+```
+
+### 4. Generate and Deploy
+
+```bash
+# Generate tasks from MCP server
+uv run python doe_mcp/task_generator.py
+
+# LLM designs the flow
+uv run python doe_mcp/flow_designer.py
+
+# Deploy the generated flow
+uv run python doe_mcp/deploy.py
+```
+
+### 5. Run DOE with Worker Mode
+
+```bash
+# Run DOE, submitting each point to the work pool
+USE_WORKER_MODE=true uv run python doe_mcp/doe_runner.py 20
+```
+
+Each DOE sample point becomes a separate flow run, executed in parallel by available workers.
+
+## Individual Steps
 
 ```bash
 # Step 1: Generate tasks from MCP server
@@ -56,13 +97,14 @@ uv run python doe_mcp/doe_runner.py 20
 
 ## Configuration
 
-Environment variables (set in `.env` or export directly):
-
 | Variable | Default | Description |
 |---|---|---|
 | `OPENROUTER_API_KEY` | — | Required. Your OpenRouter API key |
 | `LITELLM_MODEL` | `openai/gpt-oss-120b` | Model to use for flow design |
 | `OPENROUTER_API_BASE` | `https://openrouter.ai/api/v1` | API base URL |
+| `PREFECT_API_URL` | `http://localhost:4200/api` | Prefect server URL |
+| `USE_WORKER_MODE` | `false` | Set `true` to submit to work pool |
+| `WORK_POOL_NAME` | `doe-pool` | Work pool name |
 
 ## Simulated Physics
 
